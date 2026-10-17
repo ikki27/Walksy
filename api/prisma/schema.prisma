@@ -1,0 +1,117 @@
+// Walksy database. After changing this file run:
+//   npx prisma migrate dev --name <what-changed>   (updates the database + client)
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs" // the NestJS app is CommonJS
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// enum values match the strings the app already uses ("regular", "deafness", ...)
+enum UserType {
+  regular
+  institution
+  volunteer
+}
+
+enum AccessibilityNeed {
+  deafness
+  speech
+  visual
+  mobility
+  autism
+  adhd
+  elderly
+  none
+}
+
+enum PlaceCategory {
+  bank
+  hospital
+  pharmacy
+  government
+  shop
+  post
+  other
+}
+
+enum VisitStatus {
+  scheduled // planned, not started yet
+  active // started ("Start visit")
+  completed // ended ("End visit")
+  cancelled
+}
+
+model User {
+  id                  String              @id @default(uuid())
+  email               String              @unique
+  passwordHash        String // argon2 hash, never the password itself
+  firstName           String
+  lastName            String
+  userType            UserType            @default(regular)
+  language            String              @default("en")
+  companionName       String              @default("Walksy")
+  accessibilityNeeds  AccessibilityNeed[]
+  // GDPR: accessibility needs are health data, store them only with consent
+  healthDataConsentAt DateTime?
+  termsAcceptedAt     DateTime
+  visits              Visit[]
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  @@map("users")
+}
+
+model Place {
+  id              String        @id @default(uuid())
+  provider        String // where it came from, e.g. "locationiq"
+  providerPlaceId String // the provider's own id
+  name            String
+  address         String
+  category        PlaceCategory
+  lat             Float
+  lng             Float
+  visits          Visit[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // each place is stored once and shared by all visits to it
+  @@unique([provider, providerPlaceId])
+  @@map("places")
+}
+
+model Visit {
+  id            String      @id @default(uuid())
+  // deleting a user deletes their visits (GDPR "right to be forgotten")
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+  place         Place       @relation(fields: [placeId], references: [id])
+  placeId       String
+  title         String // what it's for, e.g. "Pay bills"
+  startsAt      DateTime
+  endsAt        DateTime
+  status        VisitStatus @default(scheduled)
+  startedAt     DateTime?
+  endedAt       DateTime?
+  cancelledAt   DateTime?
+  notifyPlace   Boolean     @default(false)
+  rideRequested Boolean     @default(false)
+
+  // "Help Me": Walksy's step-by-step guide { documents: string[], steps: string[] }
+  guide         Json?
+  currentStep   Int         @default(0) // how many steps are done
+  // "All done!": AI summary and suggested reminders [{ text, enabled }]
+  summary       String?
+  reminders     Json?
+  rating        Int? // 1 to 5 stars
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([userId, startsAt]) // fast "my visits" lists
+  @@map("visits")
+}

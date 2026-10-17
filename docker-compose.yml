@@ -1,0 +1,65 @@
+# Walksy backend + database with one command (run in C:\WalksyIOSapp):
+#   docker compose up -d --build   start everything (rebuilds the API after code changes)
+#   docker compose logs -f api     watch the backend's logs
+#   docker compose down            stop everything (the data stays)
+#
+# Secrets:
+#   .env (next to this file)  → POSTGRES_PASSWORD for the database
+#   api/.env                  → Groq / LocationIQ keys, JWT secret
+
+name: walksy
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: walksy
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: walksy
+    volumes:
+      # the data lives in this named volume, so it survives "docker compose down"
+      - db-data:/var/lib/postgresql/data
+    ports:
+      # 5433 on your PC (5432 may be taken by the old my-postgres container) → for DataGrip / Prisma Studio
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U walksy -d walksy"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # runs once: applies new migrations, then exits
+  migrate:
+    build:
+      context: ./api
+      target: migrate
+    environment:
+      DATABASE_URL: postgresql://walksy:${POSTGRES_PASSWORD}@db:5432/walksy?schema=public
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: ./api
+      target: runtime
+    restart: unless-stopped
+    # keys and JWT secret from api/.env ...
+    env_file: ./api/.env
+    # ... but the database is the "db" container, not localhost (this wins over api/.env)
+    environment:
+      DATABASE_URL: postgresql://walksy:${POSTGRES_PASSWORD}@db:5432/walksy?schema=public
+      PORT: "3000"
+    ports:
+      # the phone reaches the backend on your PC's IP, port 3000
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  db-data:

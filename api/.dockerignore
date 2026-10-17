@@ -1,0 +1,22 @@
+# not copied into the Docker image: rebuilt inside, secret, or not needed
+
+# rebuilt inside the image
+node_modules
+dist
+src/generated
+*.tsbuildinfo
+
+# secrets: passed in by docker-compose.yml, never baked into the image
+.env
+.env.*
+!.env.example
+
+# not needed to run
+test
+coverage
+*.md
+*.log
+.git
+.vscode
+Dockerfile
+.dockerignore

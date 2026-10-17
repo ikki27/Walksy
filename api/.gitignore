@@ -1,0 +1,16 @@
+# dependencies and build output
+node_modules/
+dist/
+*.tsbuildinfo
+coverage/
+
+# secrets: never commit real keys, only .env.example
+.env
+.env.*
+!.env.example
+
+# logs and OS files
+*.log
+.DS_Store
+
+/src/generated/prisma
