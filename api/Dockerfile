@@ -26,10 +26,16 @@ FROM node:24-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
+RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
+
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=build /app/dist ./dist
+# lets this image apply migrations itself ("npx prisma migrate deploy"),
+# e.g. as Railway's Pre-Deploy Command
+COPY prisma ./prisma
+COPY prisma.config.ts ./
 
 # don't run as root inside the container
 USER node
