@@ -8,15 +8,32 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
+// a short or empty secret would make login tokens easy to forge
+const MIN_JWT_SECRET_LENGTH = 32;
+const DEFAULT_JWT_EXPIRES_IN = '30d';
+// a number WITH a unit: "30d", "12h", "45m", "3600s". A bare "30" would mean 30 milliseconds,
+// so every token would already be expired when the app uses it.
+const JWT_EXPIRES_IN_FORMAT = /^[1-9]\d*(s|m|h|d)$/;
+
 @Module({
   imports: [
     JwtModule.registerAsync({
       global: true,
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        secret: config.getOrThrow<string>('JWT_SECRET'),
-        signOptions: { expiresIn: config.get<StringValue>('JWT_EXPIRES_IN') ?? '30d' },
-      }),
+      useFactory: (config: ConfigService) => {
+        const secret = config.get<string>('JWT_SECRET')?.trim() ?? '';
+        // stop at startup (visible in the deploy log) instead of failing on the first login
+        if (secret.length < MIN_JWT_SECRET_LENGTH) {
+          throw new Error(`JWT_SECRET is missing or shorter than ${MIN_JWT_SECRET_LENGTH} characters`);
+        }
+
+        const expiresIn = config.get<string>('JWT_EXPIRES_IN')?.trim() || DEFAULT_JWT_EXPIRES_IN;
+        if (!JWT_EXPIRES_IN_FORMAT.test(expiresIn)) {
+          throw new Error(`JWT_EXPIRES_IN "${expiresIn}" is invalid: use a number with a unit, e.g. 30d, 12h, 45m`);
+        }
+
+        return { secret, signOptions: { expiresIn: expiresIn as StringValue } };
+      },
     }),
   ],
   controllers: [AuthController],
